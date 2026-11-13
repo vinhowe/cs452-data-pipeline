@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data Pipeline Pass-off</title>
+<style>
+  @page { size: letter; margin: 0.6in; }
+  body { font: 10.5pt/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1d232b; max-width: 7.4in; margin: 0 auto; }
+  h1 { font-size: 19pt; margin: 0 0 2px; }
+  h2 { font-size: 13pt; margin: 20px 0 6px; border-bottom: 2px solid #e3e7ec; padding-bottom: 3px; }
+  .meta { color: #5b6672; margin-bottom: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 9.5pt; margin: 6px 0; }
+  th, td { border: 1px solid #d6dbe1; padding: 4px 7px; text-align: left; vertical-align: top; }
+  th { background: #f3f5f8; }
+  code { font: 9pt ui-monospace, Menlo, Consolas, monospace; background: #f3f5f8; padding: 0 3px; border-radius: 3px; }
+  .draft { border-left: 4px solid #e0a800; background: #fffaeb; padding: 6px 10px; margin: 8px 0; }
+  .draft-tag { font-size: 8pt; font-weight: 700; color: #8a6500; text-transform: uppercase; letter-spacing: .04em; }
+  img { max-width: 100%; border: 1px solid #d6dbe1; }
+  .break { break-before: page; }
+  svg text { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+</style>
+</head>
+<body>
+
+<h1>Data Pipeline: USGS Earthquakes into ClickHouse</h1>
+<div class="meta">Vin Howe · CS 452 · __DATE__ · Built with Claude Code (agent transcript submitted separately)</div>
+
+<h2>1. Architecture</h2>
+<svg viewBox="0 0 720 300" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4a5563"/></marker>
+    <style>
+      .box{fill:#fff;stroke:#4a5563;stroke-width:1.4;rx:8}
+      .src{fill:#eef6ee;stroke:#3d8b40}
+      .cmp{fill:#eef3fb;stroke:#3b6fc4}
+      .sto{fill:#fdf3e6;stroke:#c77c12}
+      .viz{fill:#f5eefb;stroke:#8a4fc4}
+      .t{font-size:12px;font-weight:700;fill:#1d232b}
+      .s{font-size:10px;fill:#4a5563}
+      .st{font-size:10px;font-weight:700;fill:#8a96a3;letter-spacing:.05em}
+      .ln{stroke:#4a5563;stroke-width:1.4;fill:none;marker-end:url(#a)}
+      .dash{stroke-dasharray:5 4}
+      .lbl{font-size:9.5px;fill:#4a5563}
+    </style>
+  </defs>
+  <text class="st" x="20" y="16">1 · SOURCE</text>
+  <text class="st" x="200" y="16">2 · INGESTION COMPUTE</text>
+  <text class="st" x="420" y="16">4 · ANALYTICAL STORE</text>
+  <text class="st" x="600" y="16">5 · PROVE IT'S ALIVE</text>
+
+  <!-- sources -->
+  <rect class="box src" x="10" y="30" width="160" height="56"/>
+  <text class="t" x="20" y="50">USGS FDSN API</text>
+  <text class="s" x="20" y="65">history since 1970, ≤20k events</text>
+  <text class="s" x="20" y="78">per request; updatedafter filter</text>
+
+  <rect class="box src" x="10" y="190" width="160" height="56"/>
+  <text class="t" x="20" y="210">USGS live feed</text>
+  <text class="s" x="20" y="225">all_day.csv: last 24 h,</text>
+  <text class="s" x="20" y="238">refreshed every minute</text>
+
+  <!-- seed path -->
+  <rect class="box cmp" x="200" y="30" width="190" height="70"/>
+  <text class="t" x="210" y="49">One-time seed (laptop)</text>
+  <text class="s" x="210" y="64">download_history.py: monthly,</text>
+  <text class="s" x="210" y="77">bisect if &gt;20k → data/raw/*.csv.gz</text>
+  <text class="s" x="210" y="90">load_seed.py: stream gzip → HTTP</text>
+
+  <!-- ingester -->
+  <rect class="box cmp" x="200" y="160" width="190" height="104"/>
+  <text class="t" x="210" y="179">Ingester container</text>
+  <text class="s" x="210" y="194">Python loop, every 5 min,</text>
+  <text class="s" x="210" y="207">Docker restart: unless-stopped</text>
+  <text class="s" x="210" y="224">• feed  (behind &lt; 23 h)</text>
+  <text class="s" x="210" y="237">• backfill  (behind ≥ 23 h, FDSN)</text>
+  <text class="s" x="210" y="250">• revisions sweep  (every 6 h)</text>
+
+  <!-- store -->
+  <rect class="box sto" x="420" y="60" width="160" height="80"/>
+  <text class="t" x="430" y="80">quakes.events</text>
+  <text class="s" x="430" y="95">ReplacingMergeTree(updated)</text>
+  <text class="s" x="430" y="108">ORDER BY id</text>
+  <text class="s" x="430" y="121">__ROWS__ quakes</text>
+
+  <rect class="box sto" x="420" y="180" width="160" height="62"/>
+  <text class="t" x="430" y="200">quakes.ingest_runs</text>
+  <text class="s" x="430" y="215">ledger: every attempt, ok or</text>
+  <text class="s" x="430" y="228">error, with counts + window</text>
+
+  <!-- viz -->
+  <rect class="box viz" x="605" y="110" width="105" height="80"/>
+  <text class="t" x="615" y="130">Grafana 11</text>
+  <text class="s" x="615" y="145">read-only CH</text>
+  <text class="s" x="615" y="158">user; liveness,</text>
+  <text class="s" x="615" y="171">map, history join</text>
+
+  <!-- arrows -->
+  <path class="ln" d="M170,58 L200,58"/>
+  <path class="ln" d="M390,70 L420,90"/>
+  <text class="lbl" x="372" y="122">same INSERT … input()</text>
+  <path class="ln" d="M170,218 L200,218"/>
+  <path class="ln dash" d="M110,86 L110,140 L250,140 L250,160"/>
+  <text class="lbl" x="118" y="134">gap backfill + revisions</text>
+  <path class="ln" d="M390,190 L420,125"/>
+  <path class="ln" d="M390,225 L420,215"/>
+  <path class="ln" d="M580,100 L605,135"/>
+  <path class="ln" d="M580,210 L605,170"/>
+
+  <text class="s" x="200" y="290">Stage 3 (buffer) skipped on purpose. All containers on one Docker network; ports bound to 127.0.0.1. Secrets in .env (mode 600, git-ignored).</text>
+</svg>
+
+<h2>2. Choices and why</h2>
+<div class="draft"><div class="draft-tag">Drafted by Claude: edit into your own words</div>
+<table>
+<tr><th style="width:18%">Stage</th><th style="width:22%">Choice</th><th>Why</th></tr>
+<tr><td>1. Source</td><td>USGS Earthquakes</td><td>No API key. The live feed refreshes every minute, so liveness shows within minutes. USGS <em>revises</em> events (magnitude corrected, <code>automatic → reviewed</code>), which makes idempotency a real requirement rather than a formality.</td></tr>
+<tr><td>2. Ingestion</td><td>Python loop in a Docker container, every 5 min</td><td>The machine is a desktop that stays on, and Docker starts at boot. <code>restart: unless-stopped</code> brings the container back after a crash or reboot, and the loop survives a bad run. 5 min is polite to a CDN-cached feed that's built for polling every minute. The seed is a separate one-time bulk path.</td></tr>
+<tr><td>3. Buffer</td><td>Skipped</td><td>About 300 events/hour from one producer to one consumer. A queue would add a moving part without decoupling anything that needs it. The ledger + watermark already absorbs downtime.</td></tr>
+<tr><td>4. Store</td><td>ClickHouse (Docker)</td><td>A columnar OLAP engine: aggregations over ~5M rows return in milliseconds. <code>ReplacingMergeTree(updated)</code> expresses "keep the newest revision per id" in the table definition.</td></tr>
+<tr><td>5. Liveness</td><td>Grafana</td><td>Works against ClickHouse with a provisioned datasource and dashboard, so the whole stack comes up from <code>docker compose up</code>.</td></tr>
+</table>
+</div>
+
+<h2>3. Requirements</h2>
+<div class="draft"><div class="draft-tag">Drafted by Claude: edit into your own words</div>
+<p><b>Idempotency.</b> Each feed run re-fetches 24 hours of quakes, almost all of which we already have. For each fetched row the ingester looks up the stored <code>max(updated)</code> for that <code>id</code>. It inserts a row only if the id is new or the revision is newer, and skips it otherwise. ClickHouse's <code>ReplacingMergeTree(updated)</code> is the second line of defense: rows with the same <code>id</code> collapse to the largest <code>updated</code> during background merges, and queries that must be exact use <code>FINAL</code>. Dedup on <code>id</code> alone would be wrong, because it would keep USGS's first automatic guess forever. The table has no time partition on purpose: merges only dedup within a partition, and origin time itself can be revised.</p>
+<p><b>Seed/trickle gap.</b> The seed covers 1970-01-01 through 2026-11-12 23:59 UTC. The live ingester was already running before the seed load and had fetched the trailing 24 hours, so the two paths overlap rather than leave a gap. The overlapping rows were deduplicated by revision without the loader being told where the seam was.</p>
+<p><b>Failures (API down at 3 a.m.).</b> We backfill rather than skip. Every attempt writes a row to <code>ingest_runs</code> with status <code>ok</code> or <code>error</code> and the error text. The watermark is the end of the last <em>successful</em> live run, so the next run automatically covers what a failed run missed. Up to 23 h behind, the 24-hour feed covers it. Beyond that, the ingester pages through the FDSN API from the watermark (bisecting any window over the 20,000-event limit). Runs that find nothing new are normal and recorded as <code>ok</code> with 0 inserted. Every 6 hours a revisions sweep (<code>updatedafter</code>) picks up corrections to quakes older than 24 h. A Grafana stat panel ("minutes since last good run") turns orange at 15 min and red at 60 min.</p>
+<p><b>Secrets.</b> The three local passwords were generated randomly into <code>.env</code> (mode 600, in <code>.gitignore</code>, excluded from the Docker build context). Containers receive them as environment variables, and Grafana's datasource reads its password from the environment at provisioning time. The ingester sends credentials to ClickHouse in HTTP headers, not URLs. Grafana connects as a separate read-only ClickHouse user. A scan of the repo found 0 occurrences of any <code>.env</code> value in committed files.</p>
+<p><b>Cost.</b> $0.00. Everything runs on my own machine in Docker. USGS requires no key or account. The seed was downloaded once (__REQUESTS__ requests) and loaded from local files.</p>
+</div>
+
+<h2>4. Measured results</h2>
+<table>
+__RESULTS__
+</table>
+
+<h2 class="break">5. Dashboard (unattended runs)</h2>
+<p>__SHOT_CAPTION__</p>
+<img src="dashboard.png" alt="Grafana dashboard">
+
+<h2>6. Who did what</h2>
+<div class="draft"><div class="draft-tag">Drafted by Claude: check it's accurate</div>
+<p>I chose the data source (USGS) and the analytical store (ClickHouse) from the options in the brief. Claude Code (Claude Opus 5.5) wrote the code, the Docker setup and the dashboard, ran the seed, debugged the issues that came up (an HTTP-body/newline parsing bug and a read-only-user permission issue), and drafted this document. I reviewed the design and the results with it; the transcript shows the full conversation.</p>
+</div>
+
+<p style="color:#5b6672;font-size:9pt;margin-top:18px">Code: <code>~/dev/school/cs452/data-pipeline</code>. Demo video submitted alongside this document.</p>
+</body>
+</html>
