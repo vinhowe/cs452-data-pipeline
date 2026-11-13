@@ -4,5 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 pw=$(grep '^CLICKHOUSE_PASSWORD=' .env | cut -d= -f2-)
-curl -sS http://127.0.0.1:8123/ -H "X-ClickHouse-User: pipeline" -H "X-ClickHouse-Key: $pw" \
-     --data-binary "$1 FORMAT PrettyCompactMonoBlock"
+q="$1"
+# Only read queries take an output format; GRANT/INSERT/DELETE would choke on one.
+if [[ "${q^^}" =~ ^[[:space:]]*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN) ]]; then q="$q FORMAT PrettyCompactMonoBlock"; fi
+curl -sS http://127.0.0.1:8123/ -H "X-ClickHouse-User: pipeline" -H "X-ClickHouse-Key: $pw" --data-binary "$q"

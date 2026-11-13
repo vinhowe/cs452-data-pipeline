@@ -26,7 +26,7 @@ def stat(pid, title, sql, x, desc="", unit=None, thresholds=None, decimals=None)
         d["unit"] = unit
     if decimals is not None:
         d["decimals"] = decimals
-    return panel(pid, title, "stat", sql, x, 0, 4, 4, desc,
+    return panel(pid, title, "stat", sql, x, 0, 3, 4, desc,
                  fieldConfig={"defaults": d, "overrides": []},
                  options={"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
                           "colorMode": "background", "graphMode": "none", "textMode": "value"})
@@ -36,22 +36,28 @@ panels = [
     stat(1, "Events stored", "SELECT count() FROM quakes.events FINAL", 0,
          "Distinct earthquakes after dedup (FINAL collapses revisions)."),
     stat(2, "New quakes, last hour", f"""SELECT sum(inserted) FROM quakes.ingest_runs
-         WHERE status='ok' AND {LIVE} AND started_at > now() - INTERVAL 1 HOUR""", 4,
+         WHERE status='ok' AND {LIVE} AND started_at > now() - INTERVAL 1 HOUR""", 3,
          "Never-seen-before events added by unattended runs in the last 60 minutes."),
     stat(3, "Minutes since last good run", """SELECT dateDiff('second', max(finished_at), now64(3)) / 60
-         FROM quakes.ingest_runs WHERE status='ok'""", 8,
+         FROM quakes.ingest_runs WHERE status='ok'""", 6,
          "The staleness alarm. The scheduler runs every 5 minutes, so >15 means something is wrong.",
          unit="m", decimals=1, thresholds=[{"color": "green", "value": None},
                                            {"color": "orange", "value": 15}, {"color": "red", "value": 60}]),
     stat(4, "Failed runs, last 24h", """SELECT count() FROM quakes.ingest_runs
-         WHERE status='error' AND started_at > now() - INTERVAL 1 DAY""", 12,
+         WHERE status='error' AND started_at > now() - INTERVAL 1 DAY""", 9,
          "Failures are recorded, not swallowed. The next run re-covers the window.",
          thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}]),
-    stat(5, "Newest quake", "SELECT toUnixTimestamp64Milli(max(time)) FROM quakes.events", 16,
+    stat(5, "Newest quake", "SELECT toUnixTimestamp64Milli(max(time)) FROM quakes.events", 12,
          "Origin time of the most recent event stored.", unit="dateTimeFromNow"),
     stat(6, "Ingest runs, last 24h", """SELECT count() FROM quakes.ingest_runs
-         WHERE status='ok' AND started_at > now() - INTERVAL 1 DAY""", 20,
+         WHERE status='ok' AND started_at > now() - INTERVAL 1 DAY""", 15,
          "Expected about 288 feed runs a day (every 5 min) plus 4 revision sweeps."),
+    stat(12, "Disk free", "SELECT min(free_space) FROM system.disks", 18,
+         "Free space on the drive holding ClickHouse's data (the host disk).", unit="bytes", decimals=0,
+         thresholds=[{"color": "red", "value": None}, {"color": "orange", "value": 10e9},
+                     {"color": "green", "value": 25e9}]),
+    stat(13, "ClickHouse on disk", "SELECT sum(bytes_on_disk) FROM system.parts WHERE active", 21,
+         "Everything ClickHouse stores, including its own 3-day system logs.", unit="bytes", decimals=1),
 
     panel(7, "It's alive: rows written by each unattended run", "timeseries",
           f"""SELECT started_at AS time, inserted AS new_quakes, updated AS revised

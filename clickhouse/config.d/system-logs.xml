@@ -1,0 +1,19 @@
+<!-- ClickHouse logs its own metrics/queries into system.*_log tables with no expiry by
+     default. metric_log alone grows ~140 MB/day. Keep 3 days so a week unattended can't
+     slowly eat the disk. (Changing these makes ClickHouse rename the old tables to
+     *_log_0 and create new ones with the TTL; the old ones are dropped separately.) -->
+<clickhouse>
+    <metric_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></metric_log>
+    <asynchronous_metric_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></asynchronous_metric_log>
+    <query_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></query_log>
+    <query_thread_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></query_thread_log>
+    <part_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></part_log>
+    <trace_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></trace_log>
+    <latency_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></latency_log>
+    <error_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></error_log>
+    <processors_profile_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></processors_profile_log>
+    <text_log>
+        <level>warning</level>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </text_log>
+</clickhouse>
