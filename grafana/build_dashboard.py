@@ -121,3 +121,74 @@ dash = {"uid": "quakes", "title": "USGS Earthquake Pipeline", "tags": ["cs452"],
 out = Path(__file__).resolve().parent / "dashboards" / "quakes.json"
 out.write_text(json.dumps(dash, indent=2))
 print(f"wrote {out}")
+
+
+# ---------------------------------------------------------------------------------------
+# Demo view: one screen, numbered in the order you'd narrate it. No clicking needed.
+def big_stat(pid, title, sql, x, y, w, h, desc="", unit=None, color="blue", text_size=None):
+    d = {"color": {"mode": "fixed", "fixedColor": color}}
+    if unit:
+        d["unit"] = unit
+    opts = {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "/.*/", "values": False},
+            "colorMode": "background", "graphMode": "none", "textMode": "value_and_name",
+            "orientation": "horizontal", "justifyMode": "center"}
+    if text_size:
+        opts["text"] = {"valueSize": text_size, "titleSize": 16}
+    return panel(pid, title, "stat", sql, x, y, w, h, desc,
+                 fieldConfig={"defaults": d, "overrides": []}, options=opts)
+
+
+intro = {"id": 100, "type": "text", "title": "", "gridPos": {"x": 0, "y": 0, "w": 24, "h": 3},
+         "options": {"mode": "markdown", "content":
+             "## USGS Earthquake Pipeline\n"
+             "**History** (once): 4.8M quakes since 1970 → bulk-loaded into **ClickHouse**  ·  "
+             "**Live** (every 5 min, in Docker): USGS feed → same table  ·  **Grafana** shows it. Cost: $0."}}
+demo_panels = [
+    intro,
+    big_stat(101, "① How much data: quakes stored (1970 → now)",
+             "SELECT count() AS quakes FROM quakes.events FINAL", 0, 3, 8, 4, color="blue"),
+    big_stat(102, "① It runs by itself: last unattended run",
+             """SELECT toUnixTimestamp64Milli(max(finished_at)) AS last_run
+                FROM quakes.ingest_runs WHERE status='ok'""", 8, 3, 8, 4, unit="dateTimeFromNow",
+             color="green"),
+    big_stat(103, "① New quakes added in the last hour",
+             f"""SELECT sum(inserted) AS new_quakes FROM quakes.ingest_runs
+                 WHERE status='ok' AND {LIVE} AND started_at > now() - INTERVAL 1 HOUR
+                   AND started_at > (SELECT minIf(started_at, status='ok' AND mode='feed') FROM quakes.ingest_runs)""", 16, 3, 8, 4,
+             color="purple"),
+    panel(104, "② It's alive: one bar per 5-minute run. Nobody pressed a button.", "timeseries",
+          f"""SELECT started_at AS time, inserted AS new_quakes, updated AS revised
+              FROM quakes.ingest_runs WHERE $__timeFilter(started_at) AND status='ok' AND {LIVE}
+                AND started_at > (SELECT minIf(started_at, status='ok' AND mode='feed') FROM quakes.ingest_runs)
+              ORDER BY time""", 0, 7, 14, 9,
+          "Each run re-reads the last 24 h of quakes from USGS and keeps only the new ones.",
+          fieldConfig={"defaults": {"custom": {"drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1,
+                                               "showPoints": "never"}, "min": 0}, "overrides": []},
+          options={"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}),
+    big_stat(105, "③ No duplicates: each run re-fetches 24 h, but FINAL = distinct quakes",
+             """SELECT (SELECT count() FROM quakes.events) AS `rows on disk (dups not merged yet)`,
+                       (SELECT count() FROM quakes.events FINAL) AS `rows after FINAL dedup`,
+                       (SELECT uniqExact(id) FROM quakes.events) AS `distinct quake ids`""",
+             14, 7, 10, 9, color="orange", text_size=30),
+    panel(106, "④ Live vs. history: big quakes (M4.5+) per day, last 30 days, vs. the 2000–2025 average",
+          "timeseries",
+          """SELECT toDateTime(toDate(time)) AS day, count() AS per_day,
+                    (SELECT countIf(mag >= 4.5) / dateDiff('day', toDate('2000-01-01'), toDate('2026-01-01'))
+                       FROM quakes.events FINAL WHERE time >= '2000-01-01' AND time < '2026-01-01') AS avg_2000_2025
+             FROM quakes.events FINAL WHERE mag >= 4.5 AND time >= today() - 30
+             GROUP BY day ORDER BY day""", 0, 16, 24, 8,
+          "Joins the live trickle to the historical seed in one query.", timeFrom="30d",
+          fieldConfig={"defaults": {"custom": {"drawStyle": "bars", "fillOpacity": 60}},
+                       "overrides": [{"matcher": {"id": "byName", "options": "avg_2000_2025"},
+                                      "properties": [{"id": "custom.drawStyle", "value": "line"},
+                                                     {"id": "custom.lineWidth", "value": 3},
+                                                     {"id": "custom.fillOpacity", "value": 0},
+                                                     {"id": "color", "value": {"mode": "fixed",
+                                                                               "fixedColor": "yellow"}}]}]}),
+]
+demo = {"uid": "quakes-demo", "title": "Demo: USGS Earthquake Pipeline", "tags": ["cs452"],
+        "timezone": "browser", "refresh": "30s", "time": {"from": "now-3h", "to": "now"},
+        "schemaVersion": 39, "editable": True, "panels": demo_panels}
+out2 = Path(__file__).resolve().parent / "dashboards" / "demo.json"
+out2.write_text(json.dumps(demo, indent=2))
+print(f"wrote {out2}")
