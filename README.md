@@ -27,6 +27,9 @@ set -a; . ./.env; set +a; .venv/bin/python -m seed.load_seed  # bulk load from d
 ```
 
 Dashboard: http://127.0.0.1:3000 (view-only without login). Ad-hoc SQL: `./q.sh "SELECT ..."`.
+From other devices on the tailnet (tailnet-only, not Funnel):
+`tailscale serve --bg --https=3443 http://127.0.0.1:3000` → `https://<host>.<tailnet>.ts.net:3443`;
+turn off with `tailscale serve --https=3443 off`.
 Evidence queries for the demo and the follow-up: [`sql/evidence.sql`](sql/evidence.sql).
 Tests: `.venv/bin/python -m pytest tests`.
 
