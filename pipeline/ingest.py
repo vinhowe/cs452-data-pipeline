@@ -88,6 +88,7 @@ def _run(ch: ClickHouse, mode: str, window: tuple[datetime, datetime], fetch) ->
             ch.insert_usgs_csv(usgs.to_csv(keep).encode(), source=mode)
     except Exception as e:  # recorded, not swallowed: the ledger shows the failure
         run["status"], run["error"] = "error", f"{type(e).__name__}: {e}"[:1000]
+        run["inserted"] = run["updated"] = run["unchanged"] = 0  # nothing was written
     run["finished_at"] = now_utc()
     for k in ("started_at", "finished_at", "window_start", "window_end"):
         run[k] = run[k].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]

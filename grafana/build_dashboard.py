@@ -63,9 +63,12 @@ panels = [
           f"""SELECT started_at AS time, inserted AS new_quakes, updated AS revised
               FROM quakes.ingest_runs WHERE $__timeFilter(started_at) AND status='ok' AND {LIVE}
               ORDER BY time""", 0, 4, 14, 9,
-          "One bar pair per scheduled run (every 5 min). Nobody pushes a button.",
+          "One bar pair per scheduled run (every 5 min). Nobody pushes a button. Log scale, so the "
+          "first run's 24-hour catch-up doesn't flatten the normal 1-5 new quakes per run.",
           fieldConfig={"defaults": {"custom": {"drawStyle": "bars", "fillOpacity": 70, "barAlignment": 0,
-                                               "lineWidth": 1}}, "overrides": []},
+                                               "lineWidth": 1, "showPoints": "always", "pointSize": 4,
+                                               "scaleDistribution": {"type": "log", "log": 10}}},
+                       "overrides": []},
           options={"legend": {"displayMode": "list", "placement": "bottom"},
                    "tooltip": {"mode": "multi"}}),
     panel(8, "Run ledger (latest first)", "table",
@@ -78,9 +81,9 @@ panels = [
           """SELECT latitude, longitude, mag, place, time FROM quakes.events FINAL
              WHERE time > now() - INTERVAL 7 DAY AND mag >= 1.5 ORDER BY mag""", 0, 13, 14, 12,
           "Point size scales with magnitude.",
-          options={"view": {"id": "zero", "lat": 20, "lon": -100, "zoom": 1.3},
+          options={"view": {"id": "coords", "lat": 15, "lon": 180, "zoom": 1.9},
                    "controls": {"showZoom": True, "mouseWheelZoom": False},
-                   "basemap": {"type": "default", "name": "Basemap"},
+                   "basemap": {"type": "osm-standard", "name": "OpenStreetMap"},
                    "layers": [{"type": "markers", "name": "Quakes",
                                "location": {"mode": "coords", "latitude": "latitude", "longitude": "longitude"},
                                "config": {"showLegend": True,
@@ -113,7 +116,7 @@ panels = [
 ]
 
 dash = {"uid": "quakes", "title": "USGS Earthquake Pipeline", "tags": ["cs452"], "timezone": "browser",
-        "refresh": "1m", "time": {"from": "now-24h", "to": "now"}, "schemaVersion": 39,
+        "refresh": "1m", "time": {"from": "now-6h", "to": "now"}, "schemaVersion": 39,
         "editable": True, "panels": panels}
 out = Path(__file__).resolve().parent / "dashboards" / "quakes.json"
 out.write_text(json.dumps(dash, indent=2))

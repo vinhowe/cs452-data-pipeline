@@ -13,7 +13,7 @@
   th, td { border: 1px solid #d6dbe1; padding: 4px 7px; text-align: left; vertical-align: top; }
   th { background: #f3f5f8; }
   code { font: 9pt ui-monospace, Menlo, Consolas, monospace; background: #f3f5f8; padding: 0 3px; border-radius: 3px; }
-  .draft { border-left: 4px solid #e0a800; background: #fffaeb; padding: 6px 10px; margin: 8px 0; }
+  .draft { break-inside: avoid; border-left: 4px solid #e0a800; background: #fffaeb; padding: 6px 10px; margin: 8px 0; }
   .draft-tag { font-size: 8pt; font-weight: 700; color: #8a6500; text-transform: uppercase; letter-spacing: .04em; }
   img { max-width: 100%; border: 1px solid #d6dbe1; }
   .break { break-before: page; }
@@ -23,10 +23,10 @@
 <body>
 
 <h1>Data Pipeline: USGS Earthquakes into ClickHouse</h1>
-<div class="meta">Vin Howe · CS 452 · __DATE__ · Built with Claude Code (agent transcript submitted separately)</div>
+<div class="meta">Vin Howe · CS 452 · November 12, 2026 · Built with Claude Code (agent transcript submitted separately)</div>
 
 <h2>1. Architecture</h2>
-<svg viewBox="0 0 720 300" width="100%" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 720 312" width="100%" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4a5563"/></marker>
     <style>
@@ -80,7 +80,7 @@
   <text class="t" x="430" y="80">quakes.events</text>
   <text class="s" x="430" y="95">ReplacingMergeTree(updated)</text>
   <text class="s" x="430" y="108">ORDER BY id</text>
-  <text class="s" x="430" y="121">__ROWS__ quakes</text>
+  <text class="s" x="430" y="121">4,868,303 quakes</text>
 
   <rect class="box sto" x="420" y="180" width="160" height="62"/>
   <text class="t" x="430" y="200">quakes.ingest_runs</text>
@@ -97,7 +97,6 @@
   <!-- arrows -->
   <path class="ln" d="M170,58 L200,58"/>
   <path class="ln" d="M390,70 L420,90"/>
-  <text class="lbl" x="372" y="122">same INSERT … input()</text>
   <path class="ln" d="M170,218 L200,218"/>
   <path class="ln dash" d="M110,86 L110,140 L250,140 L250,160"/>
   <text class="lbl" x="118" y="134">gap backfill + revisions</text>
@@ -106,7 +105,8 @@
   <path class="ln" d="M580,100 L605,135"/>
   <path class="ln" d="M580,210 L605,170"/>
 
-  <text class="s" x="200" y="290">Stage 3 (buffer) skipped on purpose. All containers on one Docker network; ports bound to 127.0.0.1. Secrets in .env (mode 600, git-ignored).</text>
+  <text class="s" x="10" y="288">Seed and ingester write through one shared INSERT … SELECT FROM input() statement. Stage 3 (buffer) skipped on purpose.</text>
+  <text class="s" x="10" y="303">All containers on one Docker network, ports bound to 127.0.0.1 only. Secrets in .env (mode 600, git-ignored).</text>
 </svg>
 
 <h2>2. Choices and why</h2>
@@ -127,16 +127,28 @@
 <p><b>Seed/trickle gap.</b> The seed covers 1970-01-01 through 2026-11-12 23:59 UTC. The live ingester was already running before the seed load and had fetched the trailing 24 hours, so the two paths overlap rather than leave a gap. The overlapping rows were deduplicated by revision without the loader being told where the seam was.</p>
 <p><b>Failures (API down at 3 a.m.).</b> We backfill rather than skip. Every attempt writes a row to <code>ingest_runs</code> with status <code>ok</code> or <code>error</code> and the error text. The watermark is the end of the last <em>successful</em> live run, so the next run automatically covers what a failed run missed. Up to 23 h behind, the 24-hour feed covers it. Beyond that, the ingester pages through the FDSN API from the watermark (bisecting any window over the 20,000-event limit). Runs that find nothing new are normal and recorded as <code>ok</code> with 0 inserted. Every 6 hours a revisions sweep (<code>updatedafter</code>) picks up corrections to quakes older than 24 h. A Grafana stat panel ("minutes since last good run") turns orange at 15 min and red at 60 min.</p>
 <p><b>Secrets.</b> The three local passwords were generated randomly into <code>.env</code> (mode 600, in <code>.gitignore</code>, excluded from the Docker build context). Containers receive them as environment variables, and Grafana's datasource reads its password from the environment at provisioning time. The ingester sends credentials to ClickHouse in HTTP headers, not URLs. Grafana connects as a separate read-only ClickHouse user. A scan of the repo found 0 occurrences of any <code>.env</code> value in committed files.</p>
-<p><b>Cost.</b> $0.00. Everything runs on my own machine in Docker. USGS requires no key or account. The seed was downloaded once (__REQUESTS__ requests) and loaded from local files.</p>
+<p><b>Cost.</b> $0.00. Everything runs on my own machine in Docker. USGS requires no key or account. The seed was downloaded once (690 requests) and loaded from local files.</p>
 </div>
 
 <h2>4. Measured results</h2>
 <table>
-__RESULTS__
+<tr><th style='width:20%'>Historical seed</th><td>4,868,263 events, 1970-01-01 → 2026-11-12 23:59 UTC</td></tr>
+<tr><th style='width:20%'>Download (once)</th><td>690 FDSN requests, 683 monthly .csv.gz files, 236 MB on disk, 19 min 15 s, 0 errors</td></tr>
+<tr><th style='width:20%'>Bulk load</th><td>683 files streamed gzipped into ClickHouse in 13.6 s</td></tr>
+<tr><th style='width:20%'>Storage</th><td>549.28 MiB uncompressed → 222.22 MiB compressed (columnar)</td></tr>
+<tr><th style='width:20%'>Integrity</th><td>4,869,090 physical rows; 4,868,303 after FINAL; 4,868,303 distinct ids. The difference is duplicates not yet merged away, and FINAL hides them at query time.</td></tr>
+<tr><th style='width:20%'>Idempotency</th><td>A typical feed run fetches ~250 events and inserts ~1; ~249 are skipped as already stored. Unit tests cover re-running a batch (0 inserted).</td></tr>
+<tr><th style='width:20%'>Seed/trickle seam</th><td>22:00 UTC: 11 seed / 0 live, 23:00 UTC: 7 seed / 0 live, 00:00 UTC: 0 seed / 7 live, 01:00 UTC: 0 seed / 8 live</td></tr>
+<tr><th style='width:20%'>Unattended runs</th><td>6 successful live runs from 2026-11-13 04:58 to 2026-11-13 05:15 UTC, 1 revision sweep(s), 254 new quakes, 1 revisions applied, 0 gaps over 10 min between successful runs</td></tr>
+<tr><th style='width:20%'>Failures</th><td>2 failed runs, both in the first minute (a bug in my insert: a trailing newline in the SQL). They were recorded in the ledger, and the next run re-covered the window. (Those two rows show non-zero &#x27;inserted&#x27; counts from before a later fix. Nothing was written.)</td></tr>
+<tr><th style='width:20%'>Live vs. history</th><td>12 M4.5+ quakes in the last 24 h vs. a 2000–2025 average of 19.1/day</td></tr>
+<tr><th style='width:20%'>Dashboard latency</th><td>All 13 panels 11–320 ms, including FINAL over ~4.9M rows</td></tr>
+<tr><th style='width:20%'>Disk safety</th><td>ClickHouse system logs given a 3-day TTL; container logs capped at 50 MB each</td></tr>
+<tr><th style='width:20%'>Cost</th><td>$0.00</td></tr>
 </table>
 
 <h2 class="break">5. Dashboard (unattended runs)</h2>
-<p>__SHOT_CAPTION__</p>
+<p>Grafana, captured Nov 12 10:16 PM Mountain time (times on the dashboard are local; the database stores UTC).</p>
 <img src="dashboard.png" alt="Grafana dashboard">
 
 <h2>6. Who did what</h2>

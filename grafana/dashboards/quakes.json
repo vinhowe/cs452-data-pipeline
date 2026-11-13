@@ -7,7 +7,7 @@
   "timezone": "browser",
   "refresh": "1m",
   "time": {
-    "from": "now-24h",
+    "from": "now-6h",
     "to": "now"
   },
   "schemaVersion": 39,
@@ -508,7 +508,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "It's alive: rows written by each unattended run",
-      "description": "One bar pair per scheduled run (every 5 min). Nobody pushes a button.",
+      "description": "One bar pair per scheduled run (every 5 min). Nobody pushes a button. Log scale, so the first run's 24-hour catch-up doesn't flatten the normal 1-5 new quakes per run.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "clickhouse"
@@ -538,7 +538,13 @@
             "drawStyle": "bars",
             "fillOpacity": 70,
             "barAlignment": 0,
-            "lineWidth": 1
+            "lineWidth": 1,
+            "showPoints": "always",
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            }
           }
         },
         "overrides": []
@@ -625,18 +631,18 @@
       },
       "options": {
         "view": {
-          "id": "zero",
-          "lat": 20,
-          "lon": -100,
-          "zoom": 1.3
+          "id": "coords",
+          "lat": 15,
+          "lon": 180,
+          "zoom": 1.9
         },
         "controls": {
           "showZoom": true,
           "mouseWheelZoom": false
         },
         "basemap": {
-          "type": "default",
-          "name": "Basemap"
+          "type": "osm-standard",
+          "name": "OpenStreetMap"
         },
         "layers": [
           {
