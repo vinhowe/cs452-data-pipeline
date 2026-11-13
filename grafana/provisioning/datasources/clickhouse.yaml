@@ -1,0 +1,14 @@
+apiVersion: 1
+datasources:
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource
+    uid: clickhouse
+    isDefault: true
+    jsonData:
+      host: clickhouse
+      port: 8123
+      protocol: http
+      username: grafana          # read-only user created by clickhouse/initdb
+      defaultDatabase: quakes
+    secureJsonData:
+      password: $GRAFANA_CH_PASSWORD   # expanded from the container env, never written here

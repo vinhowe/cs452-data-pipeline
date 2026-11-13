@@ -1,0 +1,8 @@
+.env
+.venv
+data
+.git
+__pycache__
+tests
+docs
+grafana

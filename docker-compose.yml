@@ -1,0 +1,64 @@
+# Local USGS earthquake pipeline: ingester -> ClickHouse -> Grafana.
+# Secrets come from .env (git-ignored, mode 600). Every port binds to 127.0.0.1 only.
+name: quake-pipeline
+
+x-logging: &logging           # cap container logs so a week unattended can't fill the disk
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.3
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: quakes
+      CLICKHOUSE_USER: pipeline
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      GRAFANA_CH_PASSWORD: ${GRAFANA_CH_PASSWORD:?set GRAFANA_CH_PASSWORD in .env}
+    ports: ["127.0.0.1:8123:8123"]   # HTTP interface, for the seed loader and ad-hoc queries
+    volumes:
+      - chdata:/var/lib/clickhouse
+      - ./clickhouse/initdb:/docker-entrypoint-initdb.d:ro
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 10s
+      retries: 30
+    logging: *logging
+
+  ingester:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      clickhouse: { condition: service_healthy }
+    environment:
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: pipeline
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      INTERVAL_SECONDS: "300"           # every 5 minutes
+      REVISION_SWEEP_HOURS: "6"
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    restart: unless-stopped
+    depends_on:
+      clickhouse: { condition: service_healthy }
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/quakes.json
+      GRAFANA_CH_PASSWORD: ${GRAFANA_CH_PASSWORD}   # read by the datasource provisioning file
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    logging: *logging
+
+volumes:
+  chdata:
+  grafana-data:
