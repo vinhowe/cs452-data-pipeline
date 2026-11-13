@@ -80,7 +80,7 @@
   <text class="t" x="430" y="80">quakes.events</text>
   <text class="s" x="430" y="95">ReplacingMergeTree(updated)</text>
   <text class="s" x="430" y="108">ORDER BY id</text>
-  <text class="s" x="430" y="121">4,868,303 quakes</text>
+  <text class="s" x="430" y="121">4,868,308 quakes</text>
 
   <rect class="box sto" x="420" y="180" width="160" height="62"/>
   <text class="t" x="430" y="200">quakes.ingest_runs</text>
@@ -136,10 +136,10 @@
 <tr><th style='width:20%'>Download (once)</th><td>690 FDSN requests, 683 monthly .csv.gz files, 236 MB on disk, 19 min 15 s, 0 errors</td></tr>
 <tr><th style='width:20%'>Bulk load</th><td>683 files streamed gzipped into ClickHouse in 13.6 s</td></tr>
 <tr><th style='width:20%'>Storage</th><td>549.28 MiB uncompressed → 222.22 MiB compressed (columnar)</td></tr>
-<tr><th style='width:20%'>Integrity</th><td>4,869,090 physical rows; 4,868,303 after FINAL; 4,868,303 distinct ids. The difference is duplicates not yet merged away, and FINAL hides them at query time.</td></tr>
-<tr><th style='width:20%'>Idempotency</th><td>A typical feed run fetches ~250 events and inserts ~1; ~249 are skipped as already stored. Unit tests cover re-running a batch (0 inserted).</td></tr>
+<tr><th style='width:20%'>Integrity</th><td>4,869,098 physical rows; 4,868,308 after FINAL; 4,868,308 distinct ids. The difference is duplicates not yet merged away, and FINAL hides them at query time.</td></tr>
+<tr><th style='width:20%'>Idempotency</th><td>A typical feed run fetches ~248 events and inserts ~0.6; ~247 are skipped as already stored. Unit tests cover re-running a batch (0 inserted).</td></tr>
 <tr><th style='width:20%'>Seed/trickle seam</th><td>22:00 UTC: 11 seed / 0 live, 23:00 UTC: 7 seed / 0 live, 00:00 UTC: 0 seed / 7 live, 01:00 UTC: 0 seed / 8 live</td></tr>
-<tr><th style='width:20%'>Unattended runs</th><td>6 successful live runs from 2026-11-13 04:58 to 2026-11-13 05:15 UTC, 1 revision sweep(s), 254 new quakes, 1 revisions applied, 0 gaps over 10 min between successful runs</td></tr>
+<tr><th style='width:20%'>Unattended runs</th><td>19 successful live runs from 2026-11-13 04:58 to 2026-11-13 06:20 UTC, 1 revision sweep(s), 259 new quakes, 4 revisions applied, 0 gaps over 10 min between successful runs</td></tr>
 <tr><th style='width:20%'>Failures</th><td>2 failed runs, both in the first minute (a bug in my insert: a trailing newline in the SQL). They were recorded in the ledger, and the next run re-covered the window. (Those two rows show non-zero &#x27;inserted&#x27; counts from before a later fix. Nothing was written.)</td></tr>
 <tr><th style='width:20%'>Live vs. history</th><td>12 M4.5+ quakes in the last 24 h vs. a 2000–2025 average of 19.1/day</td></tr>
 <tr><th style='width:20%'>Dashboard latency</th><td>All 13 panels 11–320 ms, including FINAL over ~4.9M rows</td></tr>
@@ -148,12 +148,12 @@
 </table>
 
 <h2 class="break">5. Dashboard (unattended runs)</h2>
-<p>Grafana, captured Nov 12 10:16 PM Mountain time (times on the dashboard are local; the database stores UTC).</p>
+<p>Grafana, captured Nov 12 11:23 PM Mountain time (times on the dashboard are local; the database stores UTC).</p>
 <img src="dashboard.png" alt="Grafana dashboard">
 
 <h2>6. Who did what</h2>
 <div class="draft"><div class="draft-tag">Drafted by Claude: check it's accurate</div>
-<p>I chose the data source (USGS) and the analytical store (ClickHouse) from the options in the brief. Claude Code (Claude Opus 5.5) wrote the code, the Docker setup and the dashboard, ran the seed, debugged the issues that came up (an HTTP-body/newline parsing bug and a read-only-user permission issue), and drafted this document. I reviewed the design and the results with it; the transcript shows the full conversation.</p>
+<p>I chose the data source (USGS) and the analytical store (ClickHouse) from the options in the brief. Claude Code (Claude Opus 5.5) wrote the code, the Docker setup and the dashboard, ran the seed, debugged the issues that came up (an HTTP-body/newline parsing bug and a read-only-user permission issue), drafted this document, and transcribed my demo recording and cut pauses and filler from it at my direction (the narration is mine). I reviewed the design and the results with it; the transcript shows the full conversation.</p>
 </div>
 
 <p style="color:#5b6672;font-size:9pt;margin-top:18px">Code: <code>~/dev/school/cs452/data-pipeline</code>. Demo video submitted alongside this document.</p>
